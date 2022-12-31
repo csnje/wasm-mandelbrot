@@ -1,4 +1,4 @@
-# Barnsley fern
+# Mandelbrot set
 
 ## About
 
