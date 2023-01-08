@@ -14,7 +14,14 @@ const MAX_X: f64 = 0.6;
 const MIN_Y: f64 = -1.25;
 const MAX_Y: f64 = 1.25;
 
+const PIXEL_X_SIZE: f64 = (MAX_X - MIN_X) / CANVAS_WIDTH as f64;
+const PIXEL_Y_SIZE: f64 = (MAX_Y - MIN_Y) / CANVAS_HEIGHT as f64;
+
 const MAX_ITERATIONS: usize = 40;
+
+// Hue used to colour the plot
+const FROM_HUE: f64 = 240.0;
+const TO_HUE: f64 = 60.0;
 
 #[wasm_bindgen(start)]
 pub fn main() -> Result<(), JsValue> {
@@ -37,46 +44,41 @@ pub fn main() -> Result<(), JsValue> {
     let image_data = ImageData::new_with_u8_clamped_array(Clamped(data.as_slice()), CANVAS_WIDTH)?;
     context.put_image_data(&image_data, 0.0, 0.0)?;
 
-    let (point_width, point_height) = (
-        (MAX_X - MIN_X) / CANVAS_WIDTH as f64,
-        (MAX_Y - MIN_Y) / CANVAS_HEIGHT as f64,
-    );
-
     for i in 0..CANVAS_WIDTH {
+        let x0 = MIN_X + (i as f64 + 0.5) * PIXEL_X_SIZE;
         for j in 0..CANVAS_HEIGHT {
-            // Determine escape time
-            let (x0, y0) = (
-                MIN_X + (i as f64 + 0.5) * point_width,
-                MIN_Y + (j as f64 + 0.5) * point_height,
-            );
+            let y0 = MAX_Y - (j as f64 + 0.5) * PIXEL_Y_SIZE;
+
+            // Apply the quadratic function to determine the
+            // number of iterations required to escape
+            let mut iteration = 0;
             let (mut x, mut y, mut x2, mut y2) = (0.0, 0.0, 0.0, 0.0);
-            let mut it = 0;
-            while x2 + y2 <= 4.0 && it < MAX_ITERATIONS {
+            while x2 + y2 <= 4.0 && iteration < MAX_ITERATIONS {
                 y = (x + x) * y + y0;
                 x = x2 - y2 + x0;
                 x2 = x * x;
                 y2 = y * y;
-                it += 1;
+                iteration += 1;
             }
 
-            // Plot
-            let idx = j as usize * CANVAS_WIDTH as usize + i as usize;
-            if it < MAX_ITERATIONS {
-                let n = it as f64 / MAX_ITERATIONS as f64;
+            // Plot a colour for the escape iteration
+            let index = j as usize * CANVAS_WIDTH as usize + i as usize;
+            if iteration < MAX_ITERATIONS {
+                let n = iteration as f64 / MAX_ITERATIONS as f64;
 
                 let (h, s, v) = if n <= 0.5 {
-                    (240.0, 1.0 - 2.0 * n, 0.25 + 1.5 * n)
+                    (FROM_HUE, 1.0 - 2.0 * n, 0.25 + 1.5 * n)
                 } else {
-                    (60.0, 2.0 * n - 1.0, 1.75 - 1.5 * n)
+                    (TO_HUE, 2.0 * n - 1.0, 1.75 - 1.5 * n)
                 };
 
                 let (r, g, b) = hsv_to_rgb(h, s, v);
 
-                data[idx * 4] = (u8::MAX as f64 * r) as u8;
-                data[idx * 4 + 1] = (u8::MAX as f64 * g) as u8;
-                data[idx * 4 + 2] = (u8::MAX as f64 * b) as u8;
+                data[index * 4] = (u8::MAX as f64 * r) as u8;
+                data[index * 4 + 1] = (u8::MAX as f64 * g) as u8;
+                data[index * 4 + 2] = (u8::MAX as f64 * b) as u8;
             }
-            data[idx * 4 + 3] = u8::MAX;
+            data[index * 4 + 3] = u8::MAX;
         }
     }
     context.put_image_data(&image_data, 0.0, 0.0)?;
@@ -90,7 +92,7 @@ pub fn main() -> Result<(), JsValue> {
 /// Output RGB range is ([0,1], [0,1], [0,1]).
 fn hsv_to_rgb(h: f64, s: f64, v: f64) -> (f64, f64, f64) {
     let c = v * s;
-    let h1 = h / 60.0;
+    let h1 = h % 360.0 / 60.0;
     let x = c * (1.0 - (h1 % 2.0 - 1.0).abs());
     let (r1, g1, b1) = if h1 < 1.0 {
         (c, x, 0.0)
