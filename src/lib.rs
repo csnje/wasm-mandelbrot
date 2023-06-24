@@ -1,9 +1,6 @@
 // A WebAssembly implementation of the Mandelbrot set.
 
-use wasm_bindgen::prelude::*;
-use wasm_bindgen::{Clamped, JsCast};
-use web_sys::CanvasRenderingContext2d;
-use web_sys::ImageData;
+use wasm_bindgen::{prelude::*, Clamped, JsCast};
 
 const CANVAS_WIDTH: u32 = 1400;
 const CANVAS_HEIGHT: u32 = 1200;
@@ -38,10 +35,11 @@ pub fn main() -> Result<(), JsValue> {
     let context = canvas
         .get_context("2d")?
         .expect("should have 2d context")
-        .dyn_into::<CanvasRenderingContext2d>()?;
+        .dyn_into::<web_sys::CanvasRenderingContext2d>()?;
 
     let mut data = vec![0; (CANVAS_WIDTH * CANVAS_HEIGHT * 4) as usize];
-    let image_data = ImageData::new_with_u8_clamped_array(Clamped(data.as_slice()), CANVAS_WIDTH)?;
+    let image_data =
+        web_sys::ImageData::new_with_u8_clamped_array(Clamped(data.as_slice()), CANVAS_WIDTH)?;
     context.put_image_data(&image_data, 0.0, 0.0)?;
 
     for i in 0..CANVAS_WIDTH {
