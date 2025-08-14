@@ -1,54 +1,51 @@
-// A WebAssembly implementation of the Mandelbrot set.
+// An implementation of the Mandelbrot set.
 
-use wasm_bindgen::{prelude::*, Clamped, JsCast};
+/// Return pointer to allocated memory of specified size.
+#[unsafe(no_mangle)]
+pub extern "C" fn create_array(size: usize) -> *mut u8 {
+    let mut data = Vec::with_capacity(size);
+    let ptr = data.as_mut_ptr();
+    std::mem::forget(data);
+    ptr
+}
 
-const CANVAS_WIDTH: u32 = 1400;
-const CANVAS_HEIGHT: u32 = 1200;
+/// Calculate size of allocated memory needed for image data.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn image_data_size(width: usize, height: usize) -> usize {
+    width * height * 4 // RGBA per pixel
+}
 
-// Range of fractal
-const MIN_X: f64 = -2.1;
-const MAX_X: f64 = 0.6;
-const MIN_Y: f64 = -1.25;
-const MAX_Y: f64 = 1.25;
+/// Calculate image data for the Mandelbrot set.
+///
+/// # Safety
+///
+/// The memory pointer must previously have been allocated for the specified image size.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn generate(
+    x_range_min: f64,
+    x_range_max: f64,
+    y_range_min: f64,
+    y_range_max: f64,
+    image_data_ptr: *mut u8,
+    image_width: usize,
+    image_height: usize,
+) {
+    const MAX_ITERATIONS: usize = 40;
+    const HUE_RANGE: [f64; 2] = [240.0, 60.0];
 
-const PIXEL_X_SIZE: f64 = (MAX_X - MIN_X) / CANVAS_WIDTH as f64;
-const PIXEL_Y_SIZE: f64 = (MAX_Y - MIN_Y) / CANVAS_HEIGHT as f64;
+    let image = unsafe {
+        std::slice::from_raw_parts_mut(image_data_ptr, image_data_size(image_width, image_height))
+    };
 
-const MAX_ITERATIONS: usize = 40;
+    for x_idx in 0..image_width {
+        let tmp = x_idx as f64 / (image_width - 1) as f64;
+        let x0 = x_range_min + (x_range_max - x_range_min) * tmp;
 
-// Hue used to colour the plot
-const FROM_HUE: f64 = 240.0;
-const TO_HUE: f64 = 60.0;
+        for y_idx in 0..image_height {
+            let tmp = y_idx as f64 / (image_height - 1) as f64;
+            let y0 = y_range_min + (y_range_max - y_range_min) * tmp;
 
-#[wasm_bindgen(start)]
-pub fn main() -> Result<(), JsValue> {
-    let window = web_sys::window().expect("should have window");
-    let document = window.document().expect("should have window");
-
-    let canvas = document
-        .create_element("canvas")?
-        .dyn_into::<web_sys::HtmlCanvasElement>()?;
-    canvas.set_width(CANVAS_WIDTH);
-    canvas.set_height(CANVAS_HEIGHT);
-    document.body().unwrap().append_child(&canvas)?;
-
-    let context = canvas
-        .get_context("2d")?
-        .expect("should have 2d context")
-        .dyn_into::<web_sys::CanvasRenderingContext2d>()?;
-
-    let mut data = vec![0; (CANVAS_WIDTH * CANVAS_HEIGHT * 4) as usize];
-    let image_data =
-        web_sys::ImageData::new_with_u8_clamped_array(Clamped(data.as_slice()), CANVAS_WIDTH)?;
-    context.put_image_data(&image_data, 0.0, 0.0)?;
-
-    for i in 0..CANVAS_WIDTH {
-        let x0 = MIN_X + (i as f64 + 0.5) * PIXEL_X_SIZE;
-        for j in 0..CANVAS_HEIGHT {
-            let y0 = MAX_Y - (j as f64 + 0.5) * PIXEL_Y_SIZE;
-
-            // Apply the quadratic function to determine the
-            // number of iterations required to escape
+            // determine escape iteration
             let mut iteration = 0;
             let (mut x, mut y, mut x2, mut y2) = (0.0, 0.0, 0.0, 0.0);
             while x2 + y2 <= 4.0 && iteration < MAX_ITERATIONS {
@@ -59,35 +56,32 @@ pub fn main() -> Result<(), JsValue> {
                 iteration += 1;
             }
 
-            // Plot a colour for the escape iteration
-            let index = j as usize * CANVAS_WIDTH as usize + i as usize;
-            if iteration < MAX_ITERATIONS {
+            // determine colour for escape iteration
+            let (r, g, b) = if iteration == MAX_ITERATIONS {
+                (0.0, 0.0, 0.0)
+            } else {
                 let n = iteration as f64 / MAX_ITERATIONS as f64;
-
                 let (h, s, v) = if n <= 0.5 {
-                    (FROM_HUE, 1.0 - 2.0 * n, 0.25 + 1.5 * n)
+                    (HUE_RANGE[0], 1.0 - 2.0 * n, 0.25 + 1.5 * n)
                 } else {
-                    (TO_HUE, 2.0 * n - 1.0, 1.75 - 1.5 * n)
+                    (HUE_RANGE[1], 2.0 * n - 1.0, 1.75 - 1.5 * n)
                 };
+                hsv_to_rgb(h, s, v)
+            };
 
-                let (r, g, b) = hsv_to_rgb(h, s, v);
-
-                data[index * 4] = (u8::MAX as f64 * r) as u8;
-                data[index * 4 + 1] = (u8::MAX as f64 * g) as u8;
-                data[index * 4 + 2] = (u8::MAX as f64 * b) as u8;
-            }
-            data[index * 4 + 3] = u8::MAX;
+            let image_offset = (image_width * y_idx + x_idx) * 4;
+            image[image_offset] = (u8::MAX as f64 * r) as u8;
+            image[image_offset + 1] = (u8::MAX as f64 * g) as u8;
+            image[image_offset + 2] = (u8::MAX as f64 * b) as u8;
+            image[image_offset + 3] = u8::MAX;
         }
     }
-    context.put_image_data(&image_data, 0.0, 0.0)?;
-
-    Ok(())
 }
 
-/// Convert from HSV colour to RGB colour.
-///
-/// Input HSV range is ([0,360], [0,1], [0,1]).
-/// Output RGB range is ([0,1], [0,1], [0,1]).
+// Convert from HSV colour to RGB colour.
+//
+// Input HSV range is ([0,360], [0,1], [0,1]).
+// Output RGB range is ([0,1], [0,1], [0,1]).
 fn hsv_to_rgb(h: f64, s: f64, v: f64) -> (f64, f64, f64) {
     let c = v * s;
     let h1 = h % 360.0 / 60.0;

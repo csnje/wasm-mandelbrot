@@ -1,23 +1,17 @@
-# Mandelbrot set
+# wasm-mandelbrot
 
 ## About
 
-An implementation of the [Mandelbrot set](https://en.wikipedia.org/wiki/Mandelbrot_set) in **Rust** **WebAssembly**.
+An implementation in **Rust** **WebAssembly** and **JavaScript** of the [Mandelbrot set](https://en.wikipedia.org/wiki/Mandelbrot_set).
 
 ![Image of Mandelbrot set](./images/output.png)
 
-## Prerequisites
-
-Install [**Rust**](https://www.rust-lang.org/) and [**wasm-pack**](https://github.com/rustwasm/wasm-pack).
+A [**Rust**](https://www.rust-lang.org/) installation.
 
 ## Build
 
-```bash
-wasm-pack build --target web
-```
-or optimised for release
-```bash
-wasm-pack build --target web --release
+```sh
+cargo build --target=wasm32-unknown-unknown --release
 ```
 
 ## Run
